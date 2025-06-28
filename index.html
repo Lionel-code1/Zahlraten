@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Zahlenraten Deluxe</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      color: white;
+      text-shadow: 1px 1px 2px #000;
+    }
+
+    input, select, button {
+      padding: 10px 15px;
+      font-size: 1.1em;
+      margin: 8px;
+      border-radius: 10px;
+      border: none;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    button {
+      background: #ff8c00;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #e67300;
+      transform: scale(1.05);
+    }
+
+    #gameArea, #setup {
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #feedback {
+      font-size: 1.2em;
+      margin-top: 20px;
+      min-height: 1.5em;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      background: white;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    th, td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    th {
+      background: #eee;
+    }
+
+    #cheatInput {
+      width: 80px;
+    }
+
+    .cheat-box {
+      position: fixed;
+      bottom: 15px;
+      right: 15px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px dashed #444;
+      padding: 10px;
+      border-radius: 12px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <h1>Zahlenraten Deluxe 🎯</h1>
+
+  <div id="setup">
+    <p>Wie heißt du?</p>
+    <input type="text" id="playerName" placeholder="Dein Name" />
+    <p>Wähle den Modus:</p>
+    <select id="modeSelect">
+      <option value="100">Leicht (1–100)</option>
+      <option value="1000">Schwer (1–1000)</option>
+    </select>
+    <br />
+    <button onclick="startGame()">Spiel starten</button>
+  </div>
+
+  <div id="gameArea" style="display:none;">
+    <p id="instructions"></p>
+    <input type="number" id="guess" />
+    <button onclick="checkGuess()">Rate</button>
+    <p id="feedback"></p>
+    <p id="triesLeft"></p>
+    <button onclick="restartGame()">Neues Spiel</button>
+  </div>
+
+  <h2>🏆 Bestenliste</h2>
+  <table id="highscoreTable">
+    <tr><th>Name</th><th>Versuche</th><th>Bereich</th></tr>
+  </table>
+ 
+  <audio id="bgMusic" src="C:\Users\lione\Music\music.mp3" loop autoplay></audio>
+  <button onclick="toggleMusic()">🎵 Musik an/aus</button>
+
+  <!-- Cheat-Code-Ecke -->
+  <div class="cheat-box">
+    <input type="number" id="cheatInput" placeholder="Code" />
+    <button onclick="checkCheat()">OK</button>
+  </div>
+
+  <!-- Soundeffekte -->
+  <audio id="winSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_b52e1b4df6.mp3"></audio>
+  <audio id="failSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_d21db1b1b1.mp3"></audio>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
+
+  <script>
+    // Firebase-Konfiguration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBOBJH2GeNvZMj2KgkX9dpJpH-sbdtbMLw",
+      authDomain: "zahlenraten-665d5.firebaseapp.com",
+      projectId: "zahlenraten-665d5",
+      storageBucket: "zahlenraten-665d5.appspot.com",
+      messagingSenderId: "335949198695",
+      appId: "1:335949198695:web:dbda7e1af9638269526bc2",
+      measurementId: "G-YS1XRT05P1"
+    };
+
+    // Firebase initialisieren
+    firebase.initializeApp(firebaseConfig);
+    const analytics = firebase.analytics();
+    const db = firebase.firestore();
+
+    let secretNumber, maxNumber, attempts, player, gameOver = false;
+    const MAX_ATTEMPTS = 10;
+
+    function startGame() {
+      player = document.getElementById("playerName").value.trim();
+      if (!player) {
+        alert("Bitte gib deinen Namen ein.");
+        return;
+      }
+
+      maxNumber = parseInt(document.getElementById("modeSelect").value);
+      secretNumber = Math.floor(Math.random() * maxNumber) + 1;
+      attempts = 0;
+      gameOver = false;
+
+      document.getElementById("setup").style.display = "none";
+      document.getElementById("gameArea").style.display = "block";
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("guess").value = "";
+      document.getElementById("instructions").textContent = `Ich habe eine Zahl zwischen 1 und ${maxNumber}. Du hast ${MAX_ATTEMPTS} Versuche.`;
+      updateTriesLeft();
+    }
+
+    function checkGuess() {
+      if (gameOver) return;
+
+      const guess = Number(document.getElementById("guess").value);
+      const feedback = document.getElementById("feedback");
+      const winSound = document.getElementById("winSound");
+      const failSound = document.getElementById("failSound");
+
+      if (guess < 1 || guess > maxNumber) {
+        feedback.textContent = `Zahl muss zwischen 1 und ${maxNumber} liegen.`;
+        return;
+      }
+
+      attempts++;
+      if (guess < secretNumber) {
+        feedback.textContent = "📉 Zu niedrig!";
+        failSound.play();
+      } else if (guess > secretNumber) {
+        feedback.textContent = "📈 Zu hoch!";
+        failSound.play();
+      } else {
+        feedback.textContent = `🎉 Richtig! Die Zahl war ${secretNumber}. (${attempts} Versuche)`;
+        winSound.play();
+        saveHighscoreOnline(player, attempts, maxNumber);
+        updateHighscoreOnline();
+        gameOver = true;
+        return;
+      }
+
+      updateTriesLeft();
+
+      if (attempts >= MAX_ATTEMPTS) {
+        feedback.textContent = `❌ Leider verloren! Die Zahl war ${secretNumber}.`;
+        gameOver = true;
+      }
+    }
+
+    function updateTriesLeft() {
+      document.getElementById("triesLeft").textContent = `🔁 Versuche übrig: ${MAX_ATTEMPTS - attempts}`;
+    }
+
+    function restartGame() {
+      document.getElementById("setup").style.display = "block";
+      document.getElementById("gameArea").style.display = "none";
+      document.getElementById("playerName").value = "";
+      document.getElementById("guess").value = "";
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("triesLeft").textContent = "";
+      gameOver = false;
+    }
+
+    // Highscore in Firestore speichern
+    function saveHighscoreOnline(name, tries, range) {
+      db.collection("highscores").add({
+        name: name,
+        tries: tries,
+        range: range,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        console.log("Highscore online gespeichert");
+      }).catch(error => {
+        console.error("Fehler beim Speichern:", error);
+      });
+    }
+
+    // Highscore aus Firestore laden und Tabelle aktualisieren
+    function updateHighscoreOnline() {
+      db.collection("highscores")
+        .orderBy("tries")
+        .limit(10)
+        .get()
+        .then((querySnapshot) => {
+          const table = document.getElementById("highscoreTable");
+          // Alte Tabelle leeren, außer Überschrift
+          while (table.rows.length > 1) table.deleteRow(1);
+
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const row = table.insertRow();
+            row.insertCell(0).textContent = data.name;
+            row.insertCell(1).textContent = data.tries;
+            row.insertCell(2).textContent = data.range;
+          });
+        }).catch(error => {
+          console.error("Fehler beim Laden:", error);
+        });
+    }
+
+    // Musik automatisch starten, wenn erlaubt
+    const bgMusic = document.getElementById("bgMusic");
+
+    // Viele Browser blockieren Autoplay mit Ton, bis man klickt
+    document.body.addEventListener("click", () => {
+      if (bgMusic.paused) {
+        bgMusic.volume = 0.3; // Leise starten
+        bgMusic.play().catch(() => {}); // Fehler ignorieren
+      }
+    }, { once: true });
+
+    function toggleMusic() {
+      if (bgMusic.paused) {
+        bgMusic.play();
+      } else {
+        bgMusic.pause();
+      }
+    }
+
+    function checkCheat() {
+      const code = Number(document.getElementById("cheatInput").value);
+
+      switch (code) {
+        case 1337:
+          alert("🎯 Geheimzahl: " + secretNumber);
+          break;
+        case 9999:
+          alert("💥 Godmode! Unendlich Versuche.");
+          attempts = 0;
+          break;
+        case 7777:
+          alert("🏆 Sofortiger Sieg!");
+          document.getElementById("feedback").textContent = `🎉 Richtig! Die Zahl war ${secretNumber}. (Cheat aktiviert)`;
+          gameOver = true;
+          break;
+        case 0:
+          alert("🔁 Spiel wird zurückgesetzt.");
+          restartGame();
+          break;
+        default:
+          alert("❌ Ungültiger Code");
+      }
+
+      document.getElementById("cheatInput").value = "";
+    }
+
+    // Bestenliste beim Laden aktualisieren
+    window.onload = () => {
+      updateHighscoreOnline();
+    }
+  </script>
+
+</body>
+</html>
